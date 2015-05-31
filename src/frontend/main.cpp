@@ -10,6 +10,14 @@
 
 namespace {
 
+std::string load_file_content(const char *filename){
+	std::ifstream ifs(filename, std::ios::in);
+	std::ostringstream oss;
+	std::string line;
+	while(std::getline(ifs, line)){ oss << line << std::endl; }
+	return oss.str();
+}
+
 std::tuple<int, int, std::vector<float>> load_ppm(const char *filename){
 	std::ifstream ifs(filename, std::ios::in | std::ios::binary);
 	std::string line;
@@ -147,9 +155,9 @@ int main(int argc, char *argv[]){
 	const auto y_2x = nearest_scale2x(width, height, y_1x);
 	const auto u_2x = bicubic_scale2x(width, height, u_1x);
 	const auto v_2x = bicubic_scale2x(width, height, v_1x);
-	Waifu2x w2x(argv[3]);
+	Waifu2x w2x(load_file_content(argv[3]));
 	auto y_w2x = y_2x;
-	w2x.process(y_w2x.data(), y_2x.data(), width * 2, height * 2, width * 2);
+	w2x.process(y_w2x.data(), y_2x.data(), width * 2, height * 2, width * 2, true);
 	std::vector<float> yuv_2x(width * height * 4 * 3, 0.5f);
 	insert_component(yuv_2x, y_w2x, 0);
 	insert_component(yuv_2x, u_2x, 1);
