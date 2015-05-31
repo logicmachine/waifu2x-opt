@@ -11,9 +11,9 @@ add_library(
 
 if(MSVC)
 	set_target_properties(waifu2x PROPERTIES COMPILE_FLAGS "${OpenMP_CXX_FLAGS}")
-	set_source_files_properties(avx2/impl.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+	set_source_files_properties(avx2/avx2_impl.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 else()
 	set_target_properties(waifu2x PROPERTIES COMPILE_FLAGS "${OpenMP_CXX_FLAGS} -std=c++11")
-	set_source_files_properties(avx2/impl.cpp PROPERTIES COMPILE_FLAGS "-mavx2")
+	set_source_files_properties(avx2/avx2_impl.cpp PROPERTIES COMPILE_FLAGS "-mfma -mavx2")
 endif()
 
