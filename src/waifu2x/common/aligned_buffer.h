@@ -6,10 +6,11 @@
 
 namespace waifu2x {
 
+template <typename T>
 class AlignedBuffer {
 private:
 	std::size_t m_size;
-	float *m_pointer;
+	T *m_pointer;
 
 public:
 	AlignedBuffer()
@@ -22,7 +23,7 @@ public:
 	{
 		if(m_size == 0){ return; }
 		m_pointer =
-			reinterpret_cast<float *>(aligned_malloc(n * sizeof(float)));
+			reinterpret_cast<T *>(aligned_malloc(n * sizeof(T)));
 	}
 	AlignedBuffer(const AlignedBuffer &ib)
 		: m_size(ib.m_size)
@@ -30,8 +31,8 @@ public:
 	{
 		if(ib.m_pointer == nullptr){ return; }
 		m_pointer =
-			reinterpret_cast<float *>(aligned_malloc(m_size * sizeof(float)));
-		memcpy(m_pointer, ib.m_pointer, m_size * sizeof(float));
+			reinterpret_cast<T *>(aligned_malloc(m_size * sizeof(T)));
+		memcpy(m_pointer, ib.m_pointer, m_size * sizeof(T));
 	}
 	AlignedBuffer(AlignedBuffer &&ib)
 		: m_size(ib.m_size)
@@ -48,19 +49,19 @@ public:
 		m_size = ib.m_size;
 		if(ib.m_pointer){
 			m_pointer =
-				reinterpret_cast<float *>(aligned_malloc(m_size * sizeof(float)));
-			memcpy(m_pointer, ib.m_pointer, m_size * sizeof(float));
+				reinterpret_cast<T *>(aligned_malloc(m_size * sizeof(T)));
+			memcpy(m_pointer, ib.m_pointer, m_size * sizeof(T));
 		}else{
 			m_pointer = nullptr;
 		}
 		return *this;
 	}
 
-	const float *data() const { return m_pointer; }
-	float *data(){ return m_pointer; }
+	const T *data() const { return m_pointer; }
+	T *data(){ return m_pointer; }
 
-	float operator[](std::size_t i) const { return m_pointer[i]; }
-	float &operator[](std::size_t i){ return m_pointer[i]; }
+	T operator[](std::size_t i) const { return m_pointer[i]; }
+	T &operator[](std::size_t i){ return m_pointer[i]; }
 };
 
 }

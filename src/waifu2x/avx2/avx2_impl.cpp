@@ -10,8 +10,6 @@ namespace {
 
 static const int BLOCK_WIDTH = 64;
 static const int BLOCK_HEIGHT = 16;
-static const int IN_PLANE_BLOCK = 8;
-static const int OUT_PLANE_BLOCK = 8;
 
 inline void convolute_add(
 	float *dst, const float *src, int width, int height, int pitch,
@@ -42,7 +40,6 @@ inline void convolute_add(
 		for(int x = 0; x < width; x += 8){
 			__m256 sum1 = _mm256_load_ps(dline1 + x);
 			__m256 sum2 = _mm256_load_ps(dline2 + x);
-			__m256 s1, s2;
 			{ // line0
 				const __m256 next = _mm256_load_ps(line0 + x + 8);
 				sum1 = _mm256_fmadd_ps(cur0, k0, sum1);
@@ -51,7 +48,7 @@ inline void convolute_add(
 					_mm256_castps_si256(temp), _mm256_castps_si256(cur0), 4));
 				sum1 = _mm256_fmadd_ps(shift1, k1, sum1);
 				const __m256 shift2 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-				_mm256_castps_si256(temp), _mm256_castps_si256(cur0), 8));
+					_mm256_castps_si256(temp), _mm256_castps_si256(cur0), 8));
 				sum1 = _mm256_fmadd_ps(shift2, k2, sum1);
 				cur0 = next;
 			}
@@ -65,7 +62,7 @@ inline void convolute_add(
 				sum1 = _mm256_fmadd_ps(shift1, k4, sum1);
 				sum2 = _mm256_fmadd_ps(shift1, k1, sum2);
 				const __m256 shift2 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-				_mm256_castps_si256(temp), _mm256_castps_si256(cur1), 8));
+					_mm256_castps_si256(temp), _mm256_castps_si256(cur1), 8));
 				sum1 = _mm256_fmadd_ps(shift2, k5, sum1);
 				sum2 = _mm256_fmadd_ps(shift2, k2, sum2);
 				cur1 = next;
@@ -80,7 +77,7 @@ inline void convolute_add(
 				sum1 = _mm256_fmadd_ps(shift1, k7, sum1);
 				sum2 = _mm256_fmadd_ps(shift1, k4, sum2);
 				const __m256 shift2 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-				_mm256_castps_si256(temp), _mm256_castps_si256(cur2), 8));
+					_mm256_castps_si256(temp), _mm256_castps_si256(cur2), 8));
 				sum1 = _mm256_fmadd_ps(shift2, k8, sum1);
 				sum2 = _mm256_fmadd_ps(shift2, k5, sum2);
 				cur2 = next;
@@ -93,7 +90,7 @@ inline void convolute_add(
 					_mm256_castps_si256(temp), _mm256_castps_si256(cur3), 4));
 				sum2 = _mm256_fmadd_ps(shift1, k7, sum2);
 				const __m256 shift2 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-				_mm256_castps_si256(temp), _mm256_castps_si256(cur3), 8));
+					_mm256_castps_si256(temp), _mm256_castps_si256(cur3), 8));
 				sum2 = _mm256_fmadd_ps(shift2, k8, sum2);
 				cur3 = next;
 			}
@@ -104,87 +101,71 @@ inline void convolute_add(
 }
 
 inline void compute_block(
-	std::vector<AlignedBuffer> &out_planes, const StepModel &sm,
-	const std::vector<AlignedBuffer> &in_planes, int width, int height,
+	std::vector<AlignedBuffer<float>> &out_planes, const StepModel &sm,
+	const std::vector<AlignedBuffer<float>> &in_planes, int width, int height,
 	int io_pitch, int io_offset, int buf_pitch, int buf_slice,
-	AlignedBuffer &in_buffer, AlignedBuffer &out_buffer)
+	AlignedBuffer<float> &in_buffer, AlignedBuffer<float> &out_buffer)
 {
 	const int num_in_planes = static_cast<int>(sm.num_input_planes());
 	const int num_out_planes = static_cast<int>(sm.num_output_planes());
-	const int num_in_blocks =
-		(num_in_planes + IN_PLANE_BLOCK - 1) / IN_PLANE_BLOCK;
-	const int num_out_blocks =
-		(num_out_planes + OUT_PLANE_BLOCK - 1) / OUT_PLANE_BLOCK;
-	for(int ob = 0; ob < num_out_blocks; ++ob){
-		const int out_offset = ob * OUT_PLANE_BLOCK;
-		const int out_count =
-			std::min(OUT_PLANE_BLOCK, num_out_planes - out_offset);
-		for(int op = 0; op < out_count; ++op){
-			const __m256 v_bias = _mm256_set1_ps(sm.biases(out_offset + op));
-			float *ptr = out_buffer.data() + buf_slice * op;
-			for(int i = 0; i < buf_slice; i += 8){
-				_mm256_store_ps(ptr + i, v_bias);
+	for(int op = 0; op < num_out_planes; ++op){
+		const __m256 v_bias = _mm256_set1_ps(sm.biases(op));
+		float *ptr = out_buffer.data() + buf_slice * op;
+		for(int i = 0; i < buf_slice; i += 8){
+			_mm256_store_ps(ptr + i, v_bias);
+		}
+	}
+	for(int ip = 0; ip < num_in_planes; ++ip){
+		const float *src_ptr =
+			in_planes[ip].data() + io_offset;
+		float *dst_ptr = in_buffer.data() + buf_slice * ip;
+		for(int i = 0; i < height + 2; ++i){
+			const float *src_line = src_ptr + i * io_pitch;
+			float *dst_line = dst_ptr + i * buf_pitch;
+			for(int j = 0; j < width + 8; j += 8){
+				_mm256_store_ps(
+					dst_line + j, _mm256_load_ps(src_line + j));
 			}
 		}
-		for(int ib = 0; ib < num_in_blocks; ++ib){
-			const int in_offset = ib * IN_PLANE_BLOCK;
-			const int in_count =
-				std::min(IN_PLANE_BLOCK, num_in_planes - in_offset);
-			for(int ip = 0; ip < in_count; ++ip){
-				const float *src_ptr =
-					in_planes[ip + in_offset].data() + io_offset;
-				float *dst_ptr = in_buffer.data() + buf_slice * ip;
-				for(int i = 0; i < height + 2; ++i){
-					const float *src_line = src_ptr + i * io_pitch;
-					float *dst_line = dst_ptr + i * buf_pitch;
-					for(int j = 0; j < width + 8; j += 8){
-						_mm256_store_ps(
-							dst_line + j, _mm256_load_ps(src_line + j));
-					}
-				}
-			}
-			for(int op = 0; op < out_count; ++op){
-				for(int ip = 0; ip < in_count; ++ip){
-					const KernelModel &km =
-						sm.weights(out_offset + op)[in_offset + ip];
-					convolute_add(
-						out_buffer.data() + op * buf_slice,
-						in_buffer.data() + ip * buf_slice,
-						width, height, buf_pitch, km);
-				}
-			}
+	}
+	for(int op = 0; op < num_out_planes; ++op){
+		for(int ip = 0; ip < num_in_planes; ++ip){
+			const KernelModel &km = sm.weights(op)[ip];
+			convolute_add(
+				out_buffer.data() + op * buf_slice,
+				in_buffer.data() + ip * buf_slice,
+				width, height, buf_pitch, km);
 		}
 		const __m256 neg_coeff = _mm256_set1_ps(0.1f);
-		for(int op = 0; op < out_count; ++op){
-			const float *src_ptr = out_buffer.data() + buf_slice * op;
-			float *dst_ptr = out_planes[op + out_offset].data() + io_offset;
-			for(int i = 0; i < height; ++i){
-				const float *src_line = src_ptr + i * buf_pitch;
-				float *dst_line = dst_ptr + i * io_pitch;
-				for(int j = 0; j < width; j += 8){
-					const __m256 v = _mm256_load_ps(src_line + j);
-					const __m256 mask =
-						_mm256_cmp_ps(v, _mm256_setzero_ps(), _CMP_LT_OQ);
-					const __m256 mv = _mm256_mul_ps(v, neg_coeff);
-					_mm256_store_ps(
-						dst_line + j, _mm256_blendv_ps(v, mv, mask));
-				}
+		const float *src_ptr = out_buffer.data() + buf_slice * op;
+		float *dst_ptr = out_planes[op].data() + io_offset;
+		for(int i = 0; i < height; ++i){
+			const float *src_line = src_ptr + i * buf_pitch;
+			float *dst_line = dst_ptr + i * io_pitch;
+			for(int j = 0; j < width; j += 8){
+				const __m256 v = _mm256_load_ps(src_line + j);
+				const __m256 mask =
+					_mm256_cmp_ps(v, _mm256_setzero_ps(), _CMP_LT_OQ);
+				const __m256 mv = _mm256_mul_ps(v, neg_coeff);
+				_mm256_store_ps(
+					dst_line + j, _mm256_blendv_ps(v, mv, mask));
 			}
 		}
 	}
 }
 
-inline std::vector<AlignedBuffer> compute_step(
-	const StepModel &sm, const std::vector<AlignedBuffer> &in_planes,
+inline std::vector<AlignedBuffer<float>> compute_step(
+	const StepModel &sm, const std::vector<AlignedBuffer<float>> &in_planes,
 	int width, int height, int pitch)
 {
+	const int num_in_planes = static_cast<int>(sm.num_input_planes());
 	const int num_out_planes = static_cast<int>(sm.num_output_planes());
 	const int num_y_blocks = (height + BLOCK_HEIGHT - 1) / BLOCK_HEIGHT;
 	const int num_x_blocks = (width + BLOCK_WIDTH - 1) / BLOCK_WIDTH;
 
-	std::vector<AlignedBuffer> out_planes(num_out_planes);
+	std::vector<AlignedBuffer<float>> out_planes(num_out_planes);
 	for(int i = 0; i < num_out_planes; ++i){
-		out_planes[i] = std::move(AlignedBuffer(pitch * (height + 2)));
+		out_planes[i] = std::move(AlignedBuffer<float>(pitch * (height + 2)));
 	}
 
 	const int block_pitch = BLOCK_WIDTH + 8;
@@ -192,8 +173,8 @@ inline std::vector<AlignedBuffer> compute_step(
 
 #pragma omp parallel
 	{
-		AlignedBuffer in_buffer(block_slice * IN_PLANE_BLOCK);
-		AlignedBuffer out_buffer(block_slice * OUT_PLANE_BLOCK);
+		AlignedBuffer<float> in_buffer(block_slice * num_in_planes);
+		AlignedBuffer<float> out_buffer(block_slice * num_out_planes);
 #pragma omp for
 		for(int yb = 0; yb < num_y_blocks; ++yb){
 			const int y0 = yb * BLOCK_HEIGHT;
@@ -229,8 +210,8 @@ void AVX2Impl::process(
 	const int pitch = (width + 15) & ~7;
 	const int image_size = pitch * (height + 2);
 
-	std::vector<AlignedBuffer> in_planes(1);
-	in_planes[0] = AlignedBuffer(image_size);
+	std::vector<AlignedBuffer<float>> in_planes(1);
+	in_planes[0] = AlignedBuffer<float>(image_size);
 #pragma omp parallel for
 	for(int y = 0; y < height; ++y){
 		const int ty = std::min(
