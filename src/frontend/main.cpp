@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <tuple>
+#include <chrono>
 #include <cassert>
 #include "waifu2x.h"
 
@@ -157,12 +158,17 @@ int main(int argc, char *argv[]){
 	const auto v_2x = bicubic_scale2x(width, height, v_1x);
 	Waifu2x w2x(load_file_content(argv[3]));
 	auto y_w2x = y_2x;
+	const auto begin_time = std::chrono::system_clock::now();
 	w2x.process(y_w2x.data(), y_2x.data(), width * 2, height * 2, width * 2, true);
+	const auto end_time = std::chrono::system_clock::now();
 	std::vector<float> yuv_2x(width * height * 4 * 3, 0.5f);
 	insert_component(yuv_2x, y_w2x, 0);
 	insert_component(yuv_2x, u_2x, 1);
 	insert_component(yuv_2x, v_2x, 2);
 	const auto rgb2x = yuv2rgb(yuv_2x);
 	save_ppm(argv[2], width * 2, height * 2, rgb2x);
+	std::cerr << "Processing time: "
+	          << std::chrono::duration_cast<std::chrono::milliseconds>(end_time - begin_time).count()
+	          << " [ms]" << std::endl;
 	return 0;
 }
