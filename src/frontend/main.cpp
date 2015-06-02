@@ -27,7 +27,6 @@ std::string load_file_content(const char *filename){
 
 int main(int argc, char *argv[]){
 	namespace chrono = std::chrono;
-	const auto begin_time = chrono::system_clock::now();
 	ProgramOptions po(argc, argv);
 	if(po.has_error() || po.input_file() == ""){
 		po.help();
@@ -39,6 +38,22 @@ int main(int argc, char *argv[]){
 		std::cerr << "Can't open " << po.input_file() << std::endl;
 		return -2;
 	}
+	// Load models
+	Waifu2x w2x_noise;
+	if(po.noise_level() != 0){
+		const std::string model_path =
+			po.model_dir() + "/" +
+			(po.noise_level() == 1 ? NOISE1_MODEL : NOISE2_MODEL);
+		const std::string &model_data = load_file_content(model_path.c_str());
+		w2x_noise.load_model(model_data);
+	}
+	Waifu2x w2x_scale;
+	if(po.scale() > 1.0){
+		const std::string &model_data =
+			load_file_content((po.model_dir() + "/" + SCALE2X_MODEL).c_str());
+		w2x_scale.load_model(model_data);
+	}
+	const auto begin_time = chrono::system_clock::now();
 	// Convert to YUV and split to each component
 	input_image.convertTo(input_image, CV_32F, 1.0 / 255.0);
 	cv::cvtColor(input_image, input_image, cv::COLOR_RGB2YUV);
@@ -46,13 +61,8 @@ int main(int argc, char *argv[]){
 	cv::split(input_image, components);
 	// Noise reduction
 	if(po.noise_level() != 0){
-		const std::string model_path =
-			po.model_dir() + "/" +
-			(po.noise_level() == 1 ? NOISE1_MODEL : NOISE2_MODEL);
-		const std::string &model_data = load_file_content(model_path.c_str());
-		Waifu2x w2x(model_data);
-		w2x.set_num_threads(po.num_threads());
-		w2x.process(
+		w2x_noise.set_num_threads(po.num_threads());
+		w2x_noise.process(
 			reinterpret_cast<float *>(components[0].data),
 			reinterpret_cast<float *>(components[0].data),
 			components[0].cols, components[0].rows,
@@ -61,10 +71,7 @@ int main(int argc, char *argv[]){
 	}
 	// Scaling
 	if(po.scale() > 1.0){
-		const std::string &model_data =
-			load_file_content((po.model_dir() + "/" + SCALE2X_MODEL).c_str());
-		Waifu2x w2x(model_data);
-		w2x.set_num_threads(po.num_threads());
+		w2x_scale.set_num_threads(po.num_threads());
 		const int target_width = static_cast<int>(input_image.cols * po.scale());
 		const int target_height = static_cast<int>(input_image.rows * po.scale());
 		int current_width = input_image.cols;
@@ -75,7 +82,7 @@ int main(int argc, char *argv[]){
 			cv::resize(
 				components[0], components[0],
 				cv::Size(current_width, current_height), 0, 0, CV_INTER_NN);
-			w2x.process(
+			w2x_scale.process(
 				reinterpret_cast<float *>(components[0].data),
 				reinterpret_cast<float *>(components[0].data),
 				current_width, current_height,
@@ -99,11 +106,11 @@ int main(int argc, char *argv[]){
 	cv::merge(components, output_image);
 	cv::cvtColor(output_image, output_image, cv::COLOR_YUV2RGB);
 	output_image.convertTo(output_image, CV_8U, 255.0);
+	const auto end_time = chrono::system_clock::now();
 	// Save output image
 	cv::imwrite(po.output_file(), output_image);
 	// Dump processing time
 	if(po.is_verbose()){
-		const auto end_time = chrono::system_clock::now();
 		const auto duration =
 			chrono::duration_cast<chrono::milliseconds>(end_time - begin_time);
 		std::cerr << "Processing time: " << duration.count()
