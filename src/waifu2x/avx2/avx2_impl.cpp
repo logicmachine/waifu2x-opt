@@ -227,8 +227,6 @@ void AVX2Impl::process(
 		const auto &step = m_model.steps(i);
 		if(verbose){
 			std::cerr << "  Step " << i << "/" << num_steps << std::endl;
-			std::cerr << "    in : " << step.num_input_planes() << " planes" << std::endl;
-			std::cerr << "    out: " << step.num_output_planes() << " planes" << std::endl;
 		}
 		const int p = (i + 1) * 2;
 		auto out_planes = compute_step(

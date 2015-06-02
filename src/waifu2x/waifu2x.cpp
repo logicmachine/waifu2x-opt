@@ -86,7 +86,7 @@ public:
 				m_impl->process(
 					dst, src, width, height, pitch,
 					x0, y0, block_width, block_height,
-					true);
+					verbose);
 			}
 		}
 	}
