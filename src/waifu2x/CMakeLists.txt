@@ -8,7 +8,7 @@ add_library(
 	waifu2x
 	waifu2x.cpp
 	avx2/avx2_impl.cpp
-	avx2_fp16/avx2_fp16_impl.cpp)
+	avx/avx_impl.cpp)
 
 if(MSVC)
 	# Use static runtime
@@ -21,10 +21,10 @@ if(MSVC)
 	endforeach(flag_var)
 	set_target_properties(waifu2x PROPERTIES COMPILE_FLAGS "${OpenMP_CXX_FLAGS}")
 	set_source_files_properties(avx2/avx2_impl.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
-	set_source_files_properties(avx2_fp16/avx2_fp16_impl.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+	set_source_files_properties(avx/avx_impl.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX")
 else()
 	set_target_properties(waifu2x PROPERTIES COMPILE_FLAGS "${OpenMP_CXX_FLAGS} -std=c++11")
 	set_source_files_properties(avx2/avx2_impl.cpp PROPERTIES COMPILE_FLAGS "-mfma -mavx2")
-	set_source_files_properties(avx2_fp16/avx2_fp16_impl.cpp PROPERTIES COMPILE_FLAGS "-mfma -mavx2")
+	set_source_files_properties(avx/avx_impl.cpp PROPERTIES COMPILE_FLAGS "-mavx")
 endif()
 

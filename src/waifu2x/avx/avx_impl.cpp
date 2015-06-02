@@ -1,6 +1,6 @@
 #include <immintrin.h>
 #include <omp.h>
-#include "avx2_impl.h"
+#include "avx_impl.h"
 #include "../common/x86.h"
 #include "../common/aligned_buffer.h"
 
@@ -42,56 +42,64 @@ inline void convolute_add(
 			__m256 sum2 = _mm256_load_ps(dline2 + x);
 			{ // line0
 				const __m256 next = _mm256_load_ps(line0 + x + 8);
-				sum1 = _mm256_fmadd_ps(cur0, k0, sum1);
+				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(cur0, k0));
 				const __m256 temp = _mm256_permute2f128_ps(cur0, next, 0x21);
-				const __m256 shift1 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-					_mm256_castps_si256(temp), _mm256_castps_si256(cur0), 4));
-				sum1 = _mm256_fmadd_ps(shift1, k1, sum1);
-				const __m256 shift2 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-					_mm256_castps_si256(temp), _mm256_castps_si256(cur0), 8));
-				sum1 = _mm256_fmadd_ps(shift2, k2, sum1);
+				const __m256 shift1 = _mm256_blend_ps(
+					_mm256_permute_ps(cur0, 0x39),
+					_mm256_permute_ps(temp, 0x39), 0x88);
+				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift1, k1));
+				const __m256 shift2 = _mm256_blend_ps(
+					_mm256_permute_ps(cur0, 0x4e),
+					_mm256_permute_ps(temp, 0x4e), 0xcc);
+				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift2, k2));
 				cur0 = next;
 			}
 			{ // line1
 				const __m256 next = _mm256_load_ps(line1 + x + 8);
-				sum1 = _mm256_fmadd_ps(cur1, k3, sum1);
-				sum2 = _mm256_fmadd_ps(cur1, k0, sum2);
+				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(cur1, k3));
+				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(cur1, k0));
 				const __m256 temp = _mm256_permute2f128_ps(cur1, next, 0x21);
-				const __m256 shift1 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-					_mm256_castps_si256(temp), _mm256_castps_si256(cur1), 4));
-				sum1 = _mm256_fmadd_ps(shift1, k4, sum1);
-				sum2 = _mm256_fmadd_ps(shift1, k1, sum2);
-				const __m256 shift2 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-					_mm256_castps_si256(temp), _mm256_castps_si256(cur1), 8));
-				sum1 = _mm256_fmadd_ps(shift2, k5, sum1);
-				sum2 = _mm256_fmadd_ps(shift2, k2, sum2);
+				const __m256 shift1 = _mm256_blend_ps(
+					_mm256_permute_ps(cur1, 0x39),
+					_mm256_permute_ps(temp, 0x39), 0x88);
+				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift1, k4));
+				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift1, k1));
+				const __m256 shift2 = _mm256_blend_ps(
+					_mm256_permute_ps(cur1, 0x4e),
+					_mm256_permute_ps(temp, 0x4e), 0xcc);
+				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift2, k5));
+				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift2, k2));
 				cur1 = next;
 			}
 			{ // line2
 				const __m256 next = _mm256_load_ps(line2 + x + 8);
-				sum1 = _mm256_fmadd_ps(cur2, k6, sum1);
-				sum2 = _mm256_fmadd_ps(cur2, k3, sum2);
+				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(cur2, k6));
+				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(cur2, k3));
 				const __m256 temp = _mm256_permute2f128_ps(cur2, next, 0x21);
-				const __m256 shift1 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-					_mm256_castps_si256(temp), _mm256_castps_si256(cur2), 4));
-				sum1 = _mm256_fmadd_ps(shift1, k7, sum1);
-				sum2 = _mm256_fmadd_ps(shift1, k4, sum2);
-				const __m256 shift2 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-					_mm256_castps_si256(temp), _mm256_castps_si256(cur2), 8));
-				sum1 = _mm256_fmadd_ps(shift2, k8, sum1);
-				sum2 = _mm256_fmadd_ps(shift2, k5, sum2);
+				const __m256 shift1 = _mm256_blend_ps(
+					_mm256_permute_ps(cur2, 0x39),
+					_mm256_permute_ps(temp, 0x39), 0x88);
+				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift1, k7));
+				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift1, k4));
+				const __m256 shift2 = _mm256_blend_ps(
+					_mm256_permute_ps(cur2, 0x4e),
+					_mm256_permute_ps(temp, 0x4e), 0xcc);
+				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift2, k8));
+				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift2, k5));
 				cur2 = next;
 			}
 			{ // line3
 				const __m256 next = _mm256_load_ps(line3 + x + 8);
-				sum2 = _mm256_fmadd_ps(cur3, k6, sum2);
+				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(cur3, k6));
 				const __m256 temp = _mm256_permute2f128_ps(cur3, next, 0x21);
-				const __m256 shift1 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-					_mm256_castps_si256(temp), _mm256_castps_si256(cur3), 4));
-				sum2 = _mm256_fmadd_ps(shift1, k7, sum2);
-				const __m256 shift2 = _mm256_castsi256_ps(_mm256_alignr_epi8(
-					_mm256_castps_si256(temp), _mm256_castps_si256(cur3), 8));
-				sum2 = _mm256_fmadd_ps(shift2, k8, sum2);
+				const __m256 shift1 = _mm256_blend_ps(
+					_mm256_permute_ps(cur3, 0x39),
+					_mm256_permute_ps(temp, 0x39), 0x88);
+				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift1, k7));
+				const __m256 shift2 = _mm256_blend_ps(
+					_mm256_permute_ps(cur3, 0x4e),
+					_mm256_permute_ps(temp, 0x4e), 0xcc);
+				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift2, k8));
 				cur3 = next;
 			}
 			_mm256_store_ps(dline1 + x, sum1);
@@ -196,11 +204,11 @@ inline std::vector<AlignedBuffer<float>> compute_step(
 
 }
 
-void AVX2Impl::prepare(const Model &model){
+void AVXImpl::prepare(const Model &model){
 	m_model = model;
 }
 
-void AVX2Impl::process(
+void AVXImpl::process(
 	float *dst, const float *src, int io_width, int io_height, int io_pitch,
 	int x0, int y0, int block_width, int block_height, bool verbose)
 {
