@@ -2,8 +2,50 @@
 #include "common/model.h"
 #include "common/impl_base.h"
 #include "common/aligned_buffer.h"
-#include "avx2/avx2_impl.h"
+#include "avx/avx_impl.h"
 #include <omp.h>
+#include <cstdint>
+
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
+#include <cpuid.h>
+#endif
+
+namespace {
+
+struct CPUID {
+	uint32_t eax, ebx, ecx, edx;
+};
+
+#ifdef _MSC_VER
+void get_cpuid(CPUID *p, int i) {
+	__cpuid(reinterpret_cast<int *>(p), i);
+}
+#else
+void get_cpuid(CPUID *p, int i) {
+	int *a = reinterpret_cast<int *>(p);
+	__cpuid(i, a[0], a[1], a[2], a[3]);
+}
+#endif
+
+bool test_fma(){
+	CPUID cpuid;
+	get_cpuid(&cpuid, 1);
+	return (cpuid.ecx >> 12) & 1;
+}
+bool test_avx2(){
+	CPUID cpuid;
+	get_cpuid(&cpuid, 7);
+	return (cpuid.ebx >> 5) & 1;
+}
+bool test_avx(){
+	CPUID cpuid;
+	get_cpuid(&cpuid, 1);
+	return (cpuid.ecx >> 28) & 1;
+}
+
+}
 
 class Waifu2x::Impl {
 
@@ -38,7 +80,20 @@ public:
 	}
 
 	void load_model(const std::string &model_json){
-		m_impl.reset(new waifu2x::AVX2Impl());
+		if(test_fma()){
+			if(test_avx2()){
+				// FMA + AVX2
+				m_impl.reset(new waifu2x::AVXImpl<true, true>());
+			}else{
+				// FMA + AVX
+				m_impl.reset(new waifu2x::AVXImpl<true, false>());
+			}
+		}else if(test_avx()){
+			// AVX
+			m_impl.reset(new waifu2x::AVXImpl<false, false>());
+		}else{
+			assert(!"Unsupported CPU");
+		}
 		const waifu2x::Model model(model_json);
 		m_num_steps = static_cast<int>(model.num_steps());
 		m_impl->prepare(model);
@@ -57,6 +112,8 @@ public:
 			(height + MIN_BLOCK_HEIGHT - 1) & ~(MIN_BLOCK_HEIGHT - 1);
 		if(m_impl){ m_impl->set_block_size(width, height); }
 	}
+
+	int num_steps() const { return m_num_steps; }
 
 	void process(
 		float *dst, const float *src, int width, int height, int pitch,
@@ -113,6 +170,10 @@ void Waifu2x::set_num_threads(int num_threads){
 }
 void Waifu2x::set_image_block_size(int width, int height){
 	m_impl->set_image_block_size(width, height);
+}
+
+int Waifu2x::num_steps() const {
+	return m_impl->num_steps();
 }
 
 void Waifu2x::process(

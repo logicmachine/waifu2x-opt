@@ -11,6 +11,38 @@ namespace {
 static const int BLOCK_WIDTH = 64;
 static const int BLOCK_HEIGHT = 16;
 
+template <bool ENABLE_FMA>
+inline __m256 madd(__m256 a, __m256 b, __m256 c){
+	return _mm256_add_ps(_mm256_mul_ps(a, b), c);
+}
+template <>
+inline __m256 madd<true>(__m256 a, __m256 b, __m256 c){
+	return _mm256_fmadd_ps(a, b, c);
+}
+
+template <bool ENABLE_AVX2>
+inline __m256 alignr4(__m256 a, __m256 b){
+	return _mm256_blend_ps(
+		_mm256_permute_ps(a, 0x39), _mm256_permute_ps(b, 0x39), 0x88);
+}
+template <>
+inline __m256 alignr4<true>(__m256 a, __m256 b){
+	return _mm256_castsi256_ps(_mm256_alignr_epi8(
+		_mm256_castps_si256(a), _mm256_castps_si256(b), 4));
+}
+
+template <bool ENABLE_AVX2>
+__forceinline __m256 alignr8(__m256 a, __m256 b){
+	return _mm256_blend_ps(
+		_mm256_permute_ps(a, 0x4e), _mm256_permute_ps(b, 0x4e), 0xcc);
+}
+template <>
+__forceinline __m256 alignr8<true>(__m256 a, __m256 b){
+	return _mm256_castsi256_ps(_mm256_alignr_epi8(
+		_mm256_castps_si256(a), _mm256_castps_si256(b), 8));
+}
+
+template <bool ENABLE_FMA, bool ENABLE_AVX2>
 inline void convolute_add(
 	float *dst, const float *src, int width, int height, int pitch,
 	const KernelModel &km)
@@ -26,88 +58,115 @@ inline void convolute_add(
 	const __m256 k6 = _mm256_broadcast_ss(kernel + 6);
 	const __m256 k7 = _mm256_broadcast_ss(kernel + 7);
 	const __m256 k8 = _mm256_broadcast_ss(kernel + 8);
-	for(int y = 0; y < height; y += 2){
+	for(int y = 0; y < height; y += 4){
 		const float *line0 = src + y * pitch;
 		const float *line1 = src + (y + 1) * pitch;
 		const float *line2 = src + (y + 2) * pitch;
 		const float *line3 = src + (y + 3) * pitch;
+		const float *line4 = src + (y + 4) * pitch;
+		const float *line5 = src + (y + 5) * pitch;
 		float *dline1 = dst + y * pitch;
 		float *dline2 = dst + (y + 1) * pitch;
+		float *dline3 = dst + (y + 2) * pitch;
+		float *dline4 = dst + (y + 3) * pitch;
 		__m256 cur0 = _mm256_load_ps(line0);
 		__m256 cur1 = _mm256_load_ps(line1);
 		__m256 cur2 = _mm256_load_ps(line2);
 		__m256 cur3 = _mm256_load_ps(line3);
+		__m256 cur4 = _mm256_load_ps(line4);
+		__m256 cur5 = _mm256_load_ps(line5);
 		for(int x = 0; x < width; x += 8){
 			__m256 sum1 = _mm256_load_ps(dline1 + x);
 			__m256 sum2 = _mm256_load_ps(dline2 + x);
+			__m256 sum3 = _mm256_load_ps(dline3 + x);
+			__m256 sum4 = _mm256_load_ps(dline4 + x);
 			{ // line0
 				const __m256 next = _mm256_load_ps(line0 + x + 8);
-				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(cur0, k0));
+				sum1 = madd<ENABLE_FMA>(cur0, k0, sum1);
 				const __m256 temp = _mm256_permute2f128_ps(cur0, next, 0x21);
-				const __m256 shift1 = _mm256_blend_ps(
-					_mm256_permute_ps(cur0, 0x39),
-					_mm256_permute_ps(temp, 0x39), 0x88);
-				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift1, k1));
-				const __m256 shift2 = _mm256_blend_ps(
-					_mm256_permute_ps(cur0, 0x4e),
-					_mm256_permute_ps(temp, 0x4e), 0xcc);
-				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift2, k2));
+				const __m256 shift1 = alignr4<ENABLE_AVX2>(temp, cur0);
+				sum1 = madd<ENABLE_FMA>(shift1, k1, sum1);
+				const __m256 shift2 = alignr8<ENABLE_AVX2>(temp, cur0);
+				sum1 = madd<ENABLE_FMA>(shift2, k2, sum1);
 				cur0 = next;
 			}
 			{ // line1
 				const __m256 next = _mm256_load_ps(line1 + x + 8);
-				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(cur1, k3));
-				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(cur1, k0));
+				sum1 = madd<ENABLE_FMA>(cur1, k3, sum1);
+				sum2 = madd<ENABLE_FMA>(cur1, k0, sum2);
 				const __m256 temp = _mm256_permute2f128_ps(cur1, next, 0x21);
-				const __m256 shift1 = _mm256_blend_ps(
-					_mm256_permute_ps(cur1, 0x39),
-					_mm256_permute_ps(temp, 0x39), 0x88);
-				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift1, k4));
-				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift1, k1));
-				const __m256 shift2 = _mm256_blend_ps(
-					_mm256_permute_ps(cur1, 0x4e),
-					_mm256_permute_ps(temp, 0x4e), 0xcc);
-				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift2, k5));
-				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift2, k2));
+				const __m256 shift1 = alignr4<ENABLE_AVX2>(temp, cur1);
+				sum1 = madd<ENABLE_FMA>(shift1, k4, sum1);
+				sum2 = madd<ENABLE_FMA>(shift1, k1, sum2);
+				const __m256 shift2 = alignr8<ENABLE_AVX2>(temp, cur1);
+				sum1 = madd<ENABLE_FMA>(shift2, k5, sum1);
+				sum2 = madd<ENABLE_FMA>(shift2, k2, sum2);
 				cur1 = next;
 			}
 			{ // line2
 				const __m256 next = _mm256_load_ps(line2 + x + 8);
-				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(cur2, k6));
-				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(cur2, k3));
+				sum1 = madd<ENABLE_FMA>(cur2, k6, sum1);
+				sum2 = madd<ENABLE_FMA>(cur2, k3, sum2);
+				sum3 = madd<ENABLE_FMA>(cur2, k0, sum3);
 				const __m256 temp = _mm256_permute2f128_ps(cur2, next, 0x21);
-				const __m256 shift1 = _mm256_blend_ps(
-					_mm256_permute_ps(cur2, 0x39),
-					_mm256_permute_ps(temp, 0x39), 0x88);
-				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift1, k7));
-				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift1, k4));
-				const __m256 shift2 = _mm256_blend_ps(
-					_mm256_permute_ps(cur2, 0x4e),
-					_mm256_permute_ps(temp, 0x4e), 0xcc);
-				sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(shift2, k8));
-				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift2, k5));
+				const __m256 shift1 = alignr4<ENABLE_AVX2>(temp, cur2);
+				sum1 = madd<ENABLE_FMA>(shift1, k7, sum1);
+				sum2 = madd<ENABLE_FMA>(shift1, k4, sum2);
+				sum3 = madd<ENABLE_FMA>(shift1, k1, sum3);
+				const __m256 shift2 = alignr8<ENABLE_AVX2>(temp, cur2);
+				sum1 = madd<ENABLE_FMA>(shift2, k8, sum1);
+				sum2 = madd<ENABLE_FMA>(shift2, k5, sum2);
+				sum3 = madd<ENABLE_FMA>(shift2, k2, sum3);
 				cur2 = next;
 			}
 			{ // line3
 				const __m256 next = _mm256_load_ps(line3 + x + 8);
-				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(cur3, k6));
+				sum2 = madd<ENABLE_FMA>(cur3, k6, sum2);
+				sum3 = madd<ENABLE_FMA>(cur3, k3, sum3);
+				sum4 = madd<ENABLE_FMA>(cur3, k0, sum4);
 				const __m256 temp = _mm256_permute2f128_ps(cur3, next, 0x21);
-				const __m256 shift1 = _mm256_blend_ps(
-					_mm256_permute_ps(cur3, 0x39),
-					_mm256_permute_ps(temp, 0x39), 0x88);
-				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift1, k7));
-				const __m256 shift2 = _mm256_blend_ps(
-					_mm256_permute_ps(cur3, 0x4e),
-					_mm256_permute_ps(temp, 0x4e), 0xcc);
-				sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(shift2, k8));
+				const __m256 shift1 = alignr4<ENABLE_AVX2>(temp, cur3);
+				sum2 = madd<ENABLE_FMA>(shift1, k7, sum2);
+				sum3 = madd<ENABLE_FMA>(shift1, k4, sum3);
+				sum4 = madd<ENABLE_FMA>(shift1, k1, sum4);
+				const __m256 shift2 = alignr8<ENABLE_AVX2>(temp, cur3);
+				sum2 = madd<ENABLE_FMA>(shift2, k8, sum2);
+				sum3 = madd<ENABLE_FMA>(shift2, k5, sum3);
+				sum4 = madd<ENABLE_FMA>(shift2, k2, sum4);
 				cur3 = next;
+			}
+			{ // line4
+				const __m256 next = _mm256_load_ps(line4 + x + 8);
+				sum3 = madd<ENABLE_FMA>(cur4, k6, sum3);
+				sum4 = madd<ENABLE_FMA>(cur4, k3, sum4);
+				const __m256 temp = _mm256_permute2f128_ps(cur4, next, 0x21);
+				const __m256 shift1 = alignr4<ENABLE_AVX2>(temp, cur4);
+				sum3 = madd<ENABLE_FMA>(shift1, k7, sum3);
+				sum4 = madd<ENABLE_FMA>(shift1, k4, sum4);
+				const __m256 shift2 = alignr8<ENABLE_AVX2>(temp, cur4);
+				sum3 = madd<ENABLE_FMA>(shift2, k8, sum3);
+				sum4 = madd<ENABLE_FMA>(shift2, k5, sum4);
+				cur4 = next;
+			}
+			{ // line5
+				const __m256 next = _mm256_load_ps(line5 + x + 8);
+				sum4 = madd<ENABLE_FMA>(cur5, k6, sum4);
+				const __m256 temp = _mm256_permute2f128_ps(cur5, next, 0x21);
+				const __m256 shift1 = alignr4<ENABLE_AVX2>(temp, cur5);
+				sum4 = madd<ENABLE_FMA>(shift1, k7, sum4);
+				const __m256 shift2 = alignr8<ENABLE_AVX2>(temp, cur5);
+				sum4 = madd<ENABLE_FMA>(shift2, k8, sum4);
+				cur5 = next;
 			}
 			_mm256_store_ps(dline1 + x, sum1);
 			_mm256_store_ps(dline2 + x, sum2);
+			_mm256_store_ps(dline3 + x, sum3);
+			_mm256_store_ps(dline4 + x, sum4);
 		}
 	}
 }
 
+template <bool ENABLE_FMA, bool ENABLE_AVX2>
 inline void compute_block(
 	std::vector<AlignedBuffer<float>> &out_planes, const StepModel &sm,
 	const std::vector<AlignedBuffer<float>> &in_planes, int width, int height,
@@ -139,7 +198,7 @@ inline void compute_block(
 	for(int op = 0; op < num_out_planes; ++op){
 		for(int ip = 0; ip < num_in_planes; ++ip){
 			const KernelModel &km = sm.weights(op)[ip];
-			convolute_add(
+			convolute_add<ENABLE_FMA, ENABLE_AVX2>(
 				out_buffer.data() + op * buf_slice,
 				in_buffer.data() + ip * buf_slice,
 				width, height, buf_pitch, km);
@@ -161,10 +220,11 @@ inline void compute_block(
 		}
 	}
 }
-
+ 
+template <bool ENABLE_FMA, bool ENABLE_AVX2>
 inline std::vector<AlignedBuffer<float>> compute_step(
 	const StepModel &sm, const std::vector<AlignedBuffer<float>> &in_planes,
-	int width, int height, int pitch)
+	int width, int height, int pitch, int num_threads)
 {
 	const int num_in_planes = static_cast<int>(sm.num_input_planes());
 	const int num_out_planes = static_cast<int>(sm.num_output_planes());
@@ -177,9 +237,9 @@ inline std::vector<AlignedBuffer<float>> compute_step(
 	}
 
 	const int block_pitch = BLOCK_WIDTH + 8;
-	const int block_slice = block_pitch * (BLOCK_HEIGHT + 2);
+	const int block_slice = block_pitch * (BLOCK_HEIGHT + 4);
 
-#pragma omp parallel
+#pragma omp parallel num_threads(num_threads)
 	{
 		AlignedBuffer<float> in_buffer(block_slice * num_in_planes);
 		AlignedBuffer<float> out_buffer(block_slice * num_out_planes);
@@ -191,7 +251,7 @@ inline std::vector<AlignedBuffer<float>> compute_step(
 				const int x0 = xb * BLOCK_WIDTH;
 				const int block_width = std::min(BLOCK_WIDTH, width - x0);
 				const int io_offset = y0 * pitch + x0;
-				compute_block(
+				compute_block<ENABLE_FMA, ENABLE_AVX2>(
 					out_planes, sm, in_planes, block_width, block_height,
 					pitch, io_offset, block_pitch, block_slice,
 					in_buffer, out_buffer);
@@ -204,11 +264,13 @@ inline std::vector<AlignedBuffer<float>> compute_step(
 
 }
 
-void AVXImpl::prepare(const Model &model){
+template <bool ENABLE_FMA, bool ENABLE_AVX2>
+void AVXImpl<ENABLE_FMA, ENABLE_AVX2>::prepare(const Model &model){
 	m_model = model;
 }
 
-void AVXImpl::process(
+template <bool ENABLE_FMA, bool ENABLE_AVX2>
+void AVXImpl<ENABLE_FMA, ENABLE_AVX2>::process(
 	float *dst, const float *src, int io_width, int io_height, int io_pitch,
 	int x0, int y0, int block_width, int block_height, bool verbose)
 {
@@ -237,8 +299,9 @@ void AVXImpl::process(
 			std::cerr << "  Step " << i << "/" << num_steps << std::endl;
 		}
 		const int p = (i + 1) * 2;
-		auto out_planes = compute_step(
-			m_model.steps(i), in_planes, width - p, height - p, pitch);
+		auto out_planes = compute_step<ENABLE_FMA, ENABLE_AVX2>(
+			m_model.steps(i), in_planes, width - p, height - p, pitch,
+			m_num_threads);
 		out_planes.swap(in_planes);
 	}
 	assert(in_planes.size() == 1);
@@ -251,5 +314,9 @@ void AVXImpl::process(
 	}
 }
 
-}
+// Explicit instantiation
+template class AVXImpl<false, false>;
+template class AVXImpl<true, false>;
+template class AVXImpl<true, true>;
 
+}

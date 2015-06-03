@@ -13,9 +13,37 @@ private:
 	std::string m_model_dir;
 	int m_noise_level;
 	double m_scale;
+	int m_block_width;
+	int m_block_height;
 	std::string m_input_file;
 	std::string m_output_file;
 	bool m_verbose;
+
+	bool is_uint(const std::string &s){
+		if(s.empty()){ return false; }
+		for(const char c : s){
+			if(!isdigit(c)){ return false; }
+		}
+		return true;
+	}
+	bool validate_positive_integer(const std::string &s){
+		if(!is_uint(s)){ return false; }
+		if(atoi(s.c_str()) <= 0){ return false; }
+		return true;
+	}
+	bool validate_scale(const std::string &s){
+		bool p = false;
+		for(const char c : s){
+			if(c == '.'){
+				if(p){ return false; }
+				p = true;
+			}else if(!isdigit(c)){
+				return false;
+			}
+		}
+		const double f = atof(s.c_str());
+		return f > 1.0;
+	}
 
 public:
 	ProgramOptions(int argc, char *argv[])
@@ -24,11 +52,13 @@ public:
 		, m_model_dir(".")
 		, m_noise_level(0)
 		, m_scale(1.0)
+		, m_block_width(0)
+		, m_block_height(0)
 		, m_input_file()
 		, m_output_file("out.png")
 		, m_verbose(false)
 	{
-		std::vector<std::string> s(argc);
+		std::vector<std::string> s(argc + 1);
 		for(int i = 0; i < argc; ++i){ s[i] = std::string(argv[i]); }
 		bool enable_noise = false;
 		bool enable_scale = false;
@@ -36,25 +66,39 @@ public:
 		for(int i = 1; i < argc; ++i){
 			if(s[i] == "-h" || s[i] == "--help"){
 				m_has_error = true;
-			}else if(i + 1 < argc && (s[i] == "-j" || s[i] == "--jobs")){
-				m_num_threads = atoi(s[i + 1].c_str());
-				++i;
-			}else if(i + 1 < argc && s[i] == "--model_dir"){
+				break;
+			}else if(s[i] == "-j" || s[i] == "--jobs"){
+				if(validate_positive_integer(s[i + 1])){
+					m_num_threads = atoi(s[i + 1].c_str());
+					++i;
+				}else{
+					std::cerr << "Number of thread must be a positive integer" << std::endl;
+					m_has_error = true;
+					break;
+				}
+			}else if(s[i] == "--model_dir"){
 				m_model_dir = s[i + 1];
 				++i;
-			}else if(i + 1 < argc && s[i] == "--noise_level"){
+			}else if(s[i] == "--noise_level"){
 				const int nl = atoi(s[i + 1].c_str());
-				if(nl != 1 && nl != 2){
+				if(validate_positive_integer(s[i + 1]) && nl <= 2){
+					m_noise_level = nl;
+					++i;
+				}else{
 					std::cerr << "Noise level must be 1 or 2" << std::endl;
 					m_has_error = true;
-				}else{
-					m_noise_level = nl;
+					break;
 				}
-				++i;
-			}else if(i + 1 < argc && s[i] == "--scale_ratio"){
-				m_scale = atof(s[i + 1].c_str());
-				++i;
-			}else if(i + 1 < argc && (s[i] == "-m" || s[i] == "--mode")){
+			}else if(s[i] == "--scale_ratio"){
+				if(validate_scale(s[i + 1])){
+					m_scale = atof(s[i + 1].c_str());
+					++i;
+				}else{
+					std::cerr << "Scale must be a number greater than 1.0" << std::endl;
+					m_has_error = true;
+					break;
+				}
+			}else if(s[i] == "-m" || s[i] == "--mode"){
 				if(s[i + 1] == "noise"){
 					enable_noise = true;
 					enable_scale = false;
@@ -67,18 +111,40 @@ public:
 				}else{
 					std::cerr << "Mode must be one of <noise|scale|noise_scale>" << std::endl;
 					m_has_error = true;
+					break;
 				}
 				++i;
-			}else if(i + 1 < argc && (s[i] == "-o" || s[i] == "--output")){
-				m_output_file = s[i + 1];
-				++i;
-			}else if(i + 1 < argc && (s[i] == "-i" || s[i] == "--input")){
-				m_input_file = s[i + 1];
-				++i;
+			}else if(s[i] == "-o" || s[i] == "--output"){
+				if(s[i + 1].empty()){
+					std::cerr << "Output file does not specified" << std::endl;
+					m_has_error = true;
+					break;
+				}else{
+					m_output_file = s[i + 1];
+					++i;
+				}
+			}else if(s[i] == "-i" || s[i] == "--input"){
+				if(s[i + 1].empty()){
+					std::cerr << "Input file does not specified" << std::endl;
+					m_has_error = true;
+					break;
+				}else{
+					m_input_file = s[i + 1];
+					++i;
+				}
+			}else if(s[i] == "--block_size"){
+				if(i + 2 < argc && validate_positive_integer(s[i + 1]) &&
+				   validate_positive_integer(s[i + 2]))
+				{
+					m_block_width = atoi(s[i + 1].c_str());
+					m_block_height = atoi(s[i + 2].c_str());
+				}else{
+					std::cerr << "Block size is must be specified in two positive integers" << std::endl;
+					m_has_error = true;
+					break;
+				}
 			}else if(s[i] == "-v" || s[i] == "--verbose"){
 				m_verbose = true;
-			}else{
-				m_input_file = s[i];
 			}
 		}
 		if(!enable_noise){ m_noise_level = 0; }
@@ -92,6 +158,7 @@ public:
 		std::cerr << "  --model_dir <dir>                     : set model directory" << std::endl;
 		std::cerr << "  --scale_ratio <num>                   : set scale of output image" << std::endl;
 		std::cerr << "  --noise_level <1|2>                   : set level of noise reduction" << std::endl;
+		std::cerr << "  --block_size <w> <h>                  : set block size" << std::endl;
 		std::cerr << "  -m [--mode] <noise|scale|noise_scale> : set processing mode" << std::endl;
 		std::cerr << "  -o [--output] <file>                  : set destination file" << std::endl;
 		std::cerr << "  -i [--input] <file>                   : set source file" << std::endl;
@@ -105,6 +172,8 @@ public:
 	double scale() const { return m_scale; }
 	const std::string &input_file() const { return m_input_file; }
 	const std::string &output_file() const { return m_output_file; }
+	int block_width() const { return m_block_width; }
+	int block_height() const { return m_block_height; }
 	bool is_verbose() const { return m_verbose; }
 
 };

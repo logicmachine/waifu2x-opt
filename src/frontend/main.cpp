@@ -62,6 +62,13 @@ int main(int argc, char *argv[]){
 	// Noise reduction
 	if(po.noise_level() != 0){
 		w2x_noise.set_num_threads(po.num_threads());
+		if(po.block_width() == 0 && po.block_height() == 0){
+			const int padding = w2x_noise.num_steps() * 2;
+			w2x_noise.set_image_block_size(
+				components[0].cols + padding, components[0].rows + padding);
+		}else{
+			w2x_noise.set_image_block_size(po.block_width(), po.block_height());
+		}
 		w2x_noise.process(
 			reinterpret_cast<float *>(components[0].data),
 			reinterpret_cast<float *>(components[0].data),
@@ -71,9 +78,16 @@ int main(int argc, char *argv[]){
 	}
 	// Scaling
 	if(po.scale() > 1.0){
-		w2x_scale.set_num_threads(po.num_threads());
 		const int target_width = static_cast<int>(input_image.cols * po.scale());
 		const int target_height = static_cast<int>(input_image.rows * po.scale());
+		w2x_scale.set_num_threads(po.num_threads());
+		if(po.block_width() == 0 && po.block_height() == 0){
+			const int padding = w2x_scale.num_steps() * 2;
+			w2x_scale.set_image_block_size(
+				target_width + padding, target_height + padding);
+		}else{
+			w2x_scale.set_image_block_size(po.block_width(), po.block_height());
+		}
 		int current_width = input_image.cols;
 		int current_height = input_image.rows;
 		while(current_width < target_width || current_height < target_height){

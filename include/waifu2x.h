@@ -28,6 +28,9 @@ public:
 	void set_num_threads(int num_threads);
 	void set_image_block_size(int width, int height);
 
+	// Model specification
+	int num_steps() const;
+
 	// Run filter
 	void process(
 		float *dst, const float *src, int width, int height, int pitch,

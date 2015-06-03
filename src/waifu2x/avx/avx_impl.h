@@ -6,6 +6,7 @@
 
 namespace waifu2x {
 
+template <bool ENABLE_FMA, bool ENABLE_AVX2>
 class AVXImpl : public ImplBase {
 
 public:

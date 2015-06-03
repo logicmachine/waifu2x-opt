@@ -12,7 +12,7 @@ namespace waifu2x {
 inline void *aligned_malloc(std::size_t n){
 #ifdef _MSC_VER
 	// Visual C++
-	return _aligned_malloc(n, 32);
+	return _aligned_malloc(n, 64);
 #else
 	// GCC, Clang, ...
 	void *p = nullptr;
