@@ -32,12 +32,12 @@ inline __m256 alignr4<true>(__m256 a, __m256 b){
 }
 
 template <bool ENABLE_AVX2>
-__forceinline __m256 alignr8(__m256 a, __m256 b){
+inline __m256 alignr8(__m256 a, __m256 b){
 	return _mm256_blend_ps(
 		_mm256_permute_ps(a, 0x4e), _mm256_permute_ps(b, 0x4e), 0xcc);
 }
 template <>
-__forceinline __m256 alignr8<true>(__m256 a, __m256 b){
+inline __m256 alignr8<true>(__m256 a, __m256 b){
 	return _mm256_castsi256_ps(_mm256_alignr_epi8(
 		_mm256_castps_si256(a), _mm256_castps_si256(b), 8));
 }
