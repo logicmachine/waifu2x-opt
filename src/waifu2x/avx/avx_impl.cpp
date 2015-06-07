@@ -23,7 +23,7 @@ inline __m256 madd<true>(__m256 a, __m256 b, __m256 c){
 template <bool ENABLE_AVX2>
 inline __m256 alignr4(__m256 a, __m256 b){
 	return _mm256_blend_ps(
-		_mm256_permute_ps(a, 0x39), _mm256_permute_ps(b, 0x39), 0x88);
+		_mm256_permute_ps(b, 0x39), _mm256_permute_ps(a, 0x39), 0x88);
 }
 template <>
 inline __m256 alignr4<true>(__m256 a, __m256 b){
@@ -34,7 +34,7 @@ inline __m256 alignr4<true>(__m256 a, __m256 b){
 template <bool ENABLE_AVX2>
 inline __m256 alignr8(__m256 a, __m256 b){
 	return _mm256_blend_ps(
-		_mm256_permute_ps(a, 0x4e), _mm256_permute_ps(b, 0x4e), 0xcc);
+		_mm256_permute_ps(b, 0x4e), _mm256_permute_ps(a, 0x4e), 0xcc);
 }
 template <>
 inline __m256 alignr8<true>(__m256 a, __m256 b){
