@@ -69,12 +69,15 @@ int main(int argc, char *argv[]){
 		}else{
 			w2x_noise.set_image_block_size(po.block_width(), po.block_height());
 		}
+		cv::Mat temp(components[0].rows, components[0].cols, CV_32F);
+		assert(components[0].step == temp.step);
 		w2x_noise.process(
-			reinterpret_cast<float *>(components[0].data),
+			reinterpret_cast<float *>(temp.data),
 			reinterpret_cast<float *>(components[0].data),
 			components[0].cols, components[0].rows,
 			static_cast<int>(components[0].step / sizeof(float)),
 			po.is_verbose());
+		cv::swap(components[0], temp);
 	}
 	// Scaling
 	if(po.scale() > 1.0){
@@ -96,12 +99,15 @@ int main(int argc, char *argv[]){
 			cv::resize(
 				components[0], components[0],
 				cv::Size(current_width, current_height), 0, 0, CV_INTER_NN);
+			cv::Mat temp(current_height, current_width, CV_32F);
+			assert(components[0].step == temp.step);
 			w2x_scale.process(
-				reinterpret_cast<float *>(components[0].data),
+				reinterpret_cast<float *>(temp.data),
 				reinterpret_cast<float *>(components[0].data),
 				current_width, current_height,
 				static_cast<int>(components[0].step / sizeof(float)),
 				po.is_verbose());
+			cv::swap(components[0], temp);
 		}
 		cv::resize(
 			components[1], components[1],
