@@ -282,7 +282,7 @@ void AVXImpl<ENABLE_FMA, ENABLE_AVX2>::process(
 
 	std::vector<AlignedBuffer<float>> in_planes(1);
 	in_planes[0] = AlignedBuffer<float>(image_size);
-#pragma omp parallel for
+#pragma omp parallel for num_threads(m_num_threads)
 	for(int y = 0; y < height; ++y){
 		const int ty = std::min(
 			std::max(0, y0 + y - num_steps), io_height - 1);
@@ -306,7 +306,7 @@ void AVXImpl<ENABLE_FMA, ENABLE_AVX2>::process(
 	}
 	assert(in_planes.size() == 1);
 
-#pragma omp parallel for
+#pragma omp parallel for num_threads(m_num_threads)
 	for(int y = 0; y < height - 2 * num_steps; ++y){
 		for(int x = 0; x < width - 2 * num_steps; ++x){
 			dst[(y0 + y) * io_pitch + (x0 + x)] = in_planes[0][y * pitch + x];
