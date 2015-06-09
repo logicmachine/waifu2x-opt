@@ -1,41 +1,37 @@
 #ifndef WAIFU2X_H
 #define WAIFU2X_H
 
-#include <string>
-#include <memory>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-class Waifu2x {
+#if defined(_WIN32) || defined(__CYGWIN__)
+#	ifdef WAIFU2X_BUILD_SHARED_LIBRARY
+#		define W2X_EXPORT __declspec(dllexport)
+#	else
+#		define W2X_EXPORT __declspec(dllimport)
+#	endif
+#else
+#	define W2X_EXPORT
+#endif
 
-private:
-	// pImpl
-	class Impl;
-	std::unique_ptr<Impl> m_impl;
+typedef void * W2xHandle;
 
-	// noncopyable
-	Waifu2x(const Waifu2x &obj) = delete;
-	Waifu2x &operator=(const Waifu2x &obj) = delete;
+W2X_EXPORT W2xHandle w2x_create_handle(const char *model_json);
+W2X_EXPORT void w2x_destroy_handle(W2xHandle handle);
 
-public:
-	// Constructors and destructor
-	Waifu2x();
-	explicit Waifu2x(const std::string &model_json);
-	~Waifu2x();
+W2X_EXPORT int w2x_set_num_threads(W2xHandle handle, int num_threads);
+W2X_EXPORT int w2x_set_block_size(W2xHandle handle, int width, int height);
 
-	// Load model data
-	void load_model(const std::string &model_json);
+W2X_EXPORT int w2x_get_num_steps(const W2xHandle handle);
 
-	// Tuning parameters
-	void set_num_threads(int num_threads);
-	void set_image_block_size(int width, int height);
+W2X_EXPORT int w2x_process(
+	W2xHandle handle, float *dst, const float *src,
+	int width, int height, int pitch, int verbose);
 
-	// Model specification
-	int num_steps() const;
-
-	// Run filter
-	void process(
-		float *dst, const float *src, int width, int height, int pitch,
-		bool verbose = false);
-
-};
+#ifdef __cplusplus
+}
+#endif
 
 #endif
+

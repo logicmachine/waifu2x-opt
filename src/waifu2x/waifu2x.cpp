@@ -1,53 +1,25 @@
+#define WAIFU2X_BUILD_SHARED_LIBRARY
 #include "waifu2x.h"
 #include "common/model.h"
 #include "common/impl_base.h"
 #include "common/aligned_buffer.h"
+#include "common/x86.h"
 #include "avx/avx_impl.h"
 #include <omp.h>
+#include <memory>
 #include <cstdint>
 
-#ifdef _MSC_VER
-#include <intrin.h>
+namespace waifu2x {
+
+inline int get_max_threads(){
+#ifdef _OPENMP
+	return omp_get_max_threads();
 #else
-#include <cpuid.h>
+	return 1;
 #endif
-
-namespace {
-
-struct CPUID {
-	uint32_t eax, ebx, ecx, edx;
-};
-
-#ifdef _MSC_VER
-void get_cpuid(CPUID *p, int i) {
-	__cpuid(reinterpret_cast<int *>(p), i);
-}
-#else
-void get_cpuid(CPUID *p, int i) {
-	int *a = reinterpret_cast<int *>(p);
-	__cpuid(i, a[0], a[1], a[2], a[3]);
-}
-#endif
-
-bool test_fma(){
-	CPUID cpuid;
-	get_cpuid(&cpuid, 1);
-	return (cpuid.ecx >> 12) & 1;
-}
-bool test_avx2(){
-	CPUID cpuid;
-	get_cpuid(&cpuid, 7);
-	return (cpuid.ebx >> 5) & 1;
-}
-bool test_avx(){
-	CPUID cpuid;
-	get_cpuid(&cpuid, 1);
-	return (cpuid.ecx >> 28) & 1;
 }
 
-}
-
-class Waifu2x::Impl {
+class Waifu2xImpl {
 
 private:
 	static const int DEFAULT_BLOCK_WIDTH = 512;
@@ -61,18 +33,22 @@ private:
 	int m_block_width;
 	int m_block_height;
 
+	// noncopyable
+	Waifu2xImpl(const Waifu2xImpl &) = delete;
+	Waifu2xImpl &operator=(const Waifu2xImpl &) = delete;
+
 public:
-	Impl()
+	Waifu2xImpl()
 		: m_impl()
 		, m_num_steps(0)
-		, m_num_threads(omp_get_max_threads())
+		, m_num_threads(get_max_threads())
 		, m_block_width(DEFAULT_BLOCK_WIDTH)
 		, m_block_height(DEFAULT_BLOCK_HEIGHT)
 	{ }
-	explicit Impl(const std::string &model_json)
+	explicit Waifu2xImpl(const std::string &model_json)
 		: m_impl()
 		, m_num_steps(0)
-		, m_num_threads(omp_get_max_threads())
+		, m_num_threads(get_max_threads())
 		, m_block_width(DEFAULT_BLOCK_WIDTH)
 		, m_block_height(DEFAULT_BLOCK_HEIGHT)
 	{
@@ -150,35 +126,49 @@ public:
 
 };
 
+}
+
 //-----------------------------------------------------------------------------
-// pImpl
+// Export functions
 //-----------------------------------------------------------------------------
-Waifu2x::Waifu2x()
-	: m_impl(new Waifu2x::Impl())
-{ }
-Waifu2x::Waifu2x(const std::string &model_json)
-	: m_impl(new Waifu2x::Impl(model_json))
-{ }
-Waifu2x::~Waifu2x() = default;
+extern "C" {
 
-void Waifu2x::load_model(const std::string &model_json){
-	m_impl->load_model(model_json);
+W2X_EXPORT W2xHandle w2x_create_handle(const char *model_json){
+	return reinterpret_cast<W2xHandle>(
+		new waifu2x::Waifu2xImpl(std::string(model_json)));
+}
+W2X_EXPORT void w2x_destroy_handle(W2xHandle handle){
+	delete reinterpret_cast<waifu2x::Waifu2xImpl *>(handle);
 }
 
-void Waifu2x::set_num_threads(int num_threads){
-	m_impl->set_num_threads(num_threads);
+W2X_EXPORT int w2x_set_num_threads(W2xHandle handle, int num_threads){
+	if(!handle){ return -1; }
+	auto ptr = reinterpret_cast<waifu2x::Waifu2xImpl *>(handle);
+	ptr->set_num_threads(num_threads);
+	return 0;
 }
-void Waifu2x::set_image_block_size(int width, int height){
-	m_impl->set_image_block_size(width, height);
+W2X_EXPORT int w2x_set_block_size(W2xHandle handle, int width, int height){
+	if(!handle){ return -1; }
+	auto ptr = reinterpret_cast<waifu2x::Waifu2xImpl *>(handle);
+	ptr->set_image_block_size(width, height);
+	return 0;
 }
 
-int Waifu2x::num_steps() const {
-	return m_impl->num_steps();
+W2X_EXPORT int w2x_get_num_steps(const W2xHandle handle){
+	if(!handle){ return -1; }
+	auto ptr = reinterpret_cast<const waifu2x::Waifu2xImpl *>(handle);
+	return ptr->num_steps();
 }
 
-void Waifu2x::process(
-	float *dst, const float *src, int width, int height, int pitch,
-	bool verbose)
+W2X_EXPORT int w2x_process(
+	W2xHandle handle, float *dst, const float *src,
+	int width, int height, int pitch, int verbose)
 {
-	m_impl->process(dst, src, width, height, pitch, verbose);
+	if(!handle){ return -1; }
+	auto ptr = reinterpret_cast<waifu2x::Waifu2xImpl *>(handle);
+	ptr->process(dst, src, width, height, pitch, verbose != 0);
+	return 0;
 }
+
+}
+

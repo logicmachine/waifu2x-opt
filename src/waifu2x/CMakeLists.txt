@@ -5,7 +5,7 @@ include_directories("../../include")
 find_package(OpenMP)
 
 add_library(
-	waifu2x
+	waifu2x SHARED
 	waifu2x.cpp
 	avx/avx_impl.cpp)
 
@@ -22,6 +22,7 @@ if(MSVC)
 	set_source_files_properties(avx/avx_impl.cpp PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 else()
 	set_target_properties(waifu2x PROPERTIES COMPILE_FLAGS "${OpenMP_CXX_FLAGS} -std=c++11")
+	set_target_properties(waifu2x PROPERTIES LINK_FLAGS "${OpenMP_CXX_FLAGS}")
 	set_source_files_properties(avx/avx_impl.cpp PROPERTIES COMPILE_FLAGS "-mfma -mavx2")
 endif()
 

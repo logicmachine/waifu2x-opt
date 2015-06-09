@@ -7,7 +7,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include "options.h"
-#include "waifu2x.h"
+#include "waifu2x.hpp"
 
 namespace {
 
