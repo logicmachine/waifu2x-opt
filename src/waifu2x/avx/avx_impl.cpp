@@ -1,3 +1,6 @@
+#include <iostream>
+#include <algorithm>
+#include <cassert>
 #include <immintrin.h>
 #include <omp.h>
 #include "avx_impl.h"
@@ -45,10 +48,8 @@ inline __m256 alignr8<true>(__m256 a, __m256 b){
 template <bool ENABLE_FMA, bool ENABLE_AVX2>
 inline void convolute_add(
 	float *dst, const float *src, int width, int height, int pitch,
-	const KernelModel &km)
+	const float *kernel)
 {
-	assert(km.width() == 3 && km.height() == 3);
-	const float *kernel = km.values();
 	const __m256 k0 = _mm256_broadcast_ss(kernel + 0);
 	const __m256 k1 = _mm256_broadcast_ss(kernel + 1);
 	const __m256 k2 = _mm256_broadcast_ss(kernel + 2);
@@ -168,15 +169,16 @@ inline void convolute_add(
 
 template <bool ENABLE_FMA, bool ENABLE_AVX2>
 inline void compute_block(
-	std::vector<AlignedBuffer<float>> &out_planes, const StepModel &sm,
-	const std::vector<AlignedBuffer<float>> &in_planes, int width, int height,
+	std::vector<AlignedBuffer<float>> &out_planes,
+	const std::vector<AlignedBuffer<float>> &in_planes,
+	const Model &model, const int step, int width, int height,
 	int io_pitch, int io_offset, int buf_pitch, int buf_slice,
 	AlignedBuffer<float> &in_buffer, AlignedBuffer<float> &out_buffer)
 {
-	const int num_in_planes = static_cast<int>(sm.num_input_planes());
-	const int num_out_planes = static_cast<int>(sm.num_output_planes());
+	const int num_in_planes = static_cast<int>(model.num_in_planes(step));
+	const int num_out_planes = static_cast<int>(model.num_out_planes(step));
 	for(int op = 0; op < num_out_planes; ++op){
-		const __m256 v_bias = _mm256_set1_ps(sm.biases(op));
+		const __m256 v_bias = _mm256_set1_ps(model.bias(step, op));
 		float *ptr = out_buffer.data() + buf_slice * op;
 		for(int i = 0; i < buf_slice; i += 8){
 			_mm256_store_ps(ptr + i, v_bias);
@@ -197,11 +199,11 @@ inline void compute_block(
 	}
 	for(int op = 0; op < num_out_planes; ++op){
 		for(int ip = 0; ip < num_in_planes; ++ip){
-			const KernelModel &km = sm.weights(op)[ip];
 			convolute_add<ENABLE_FMA, ENABLE_AVX2>(
 				out_buffer.data() + op * buf_slice,
 				in_buffer.data() + ip * buf_slice,
-				width, height, buf_pitch, km);
+				width, height, buf_pitch,
+				model.coeffs(step, op, ip));
 		}
 		const __m256 neg_coeff = _mm256_set1_ps(0.1f);
 		const float *src_ptr = out_buffer.data() + buf_slice * op;
@@ -223,11 +225,12 @@ inline void compute_block(
  
 template <bool ENABLE_FMA, bool ENABLE_AVX2>
 inline std::vector<AlignedBuffer<float>> compute_step(
-	const StepModel &sm, const std::vector<AlignedBuffer<float>> &in_planes,
+	const Model &model, int step,
+	const std::vector<AlignedBuffer<float>> &in_planes,
 	int width, int height, int pitch, int num_threads)
 {
-	const int num_in_planes = static_cast<int>(sm.num_input_planes());
-	const int num_out_planes = static_cast<int>(sm.num_output_planes());
+	const int num_in_planes = static_cast<int>(model.num_in_planes(step));
+	const int num_out_planes = static_cast<int>(model.num_out_planes(step));
 	const int num_y_blocks = (height + BLOCK_HEIGHT - 1) / BLOCK_HEIGHT;
 	const int num_x_blocks = (width + BLOCK_WIDTH - 1) / BLOCK_WIDTH;
 
@@ -252,9 +255,9 @@ inline std::vector<AlignedBuffer<float>> compute_step(
 				const int block_width = std::min(BLOCK_WIDTH, width - x0);
 				const int io_offset = y0 * pitch + x0;
 				compute_block<ENABLE_FMA, ENABLE_AVX2>(
-					out_planes, sm, in_planes, block_width, block_height,
-					pitch, io_offset, block_pitch, block_slice,
-					in_buffer, out_buffer);
+					out_planes, in_planes, model, step,
+					block_width, block_height, pitch, io_offset,
+					block_pitch, block_slice, in_buffer, out_buffer);
 			}
 		}
 	}
@@ -294,13 +297,12 @@ void AVXImpl<ENABLE_FMA, ENABLE_AVX2>::process(
 	}
 
 	for(int i = 0; i < num_steps; ++i){
-		const auto &step = m_model.steps(i);
 		if(verbose){
 			std::cerr << "  Step " << i << "/" << num_steps << std::endl;
 		}
 		const int p = (i + 1) * 2;
 		auto out_planes = compute_step<ENABLE_FMA, ENABLE_AVX2>(
-			m_model.steps(i), in_planes, width - p, height - p, pitch,
+			m_model, i, in_planes, width - p, height - p, pitch,
 			m_num_threads);
 		out_planes.swap(in_planes);
 	}

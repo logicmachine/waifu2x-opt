@@ -6,8 +6,11 @@
 #include "common/x86.h"
 #include "avx/avx_impl.h"
 #include <omp.h>
+#include <iostream>
+#include <algorithm>
 #include <memory>
 #include <cstdint>
+#include <cassert>
 
 namespace waifu2x {
 
