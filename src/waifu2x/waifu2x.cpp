@@ -5,12 +5,15 @@
 #include "common/aligned_buffer.h"
 #include "common/x86.h"
 #include "avx/avx_impl.h"
+#include "dft_avx/dft_avx_impl.h"
 #include <omp.h>
 #include <iostream>
 #include <algorithm>
 #include <memory>
 #include <cstdint>
 #include <cassert>
+
+// #define USE_DFT_ALGORITHM
 
 namespace waifu2x {
 
@@ -59,6 +62,7 @@ public:
 	}
 
 	void load_model(const std::string &model_json){
+#ifndef USE_DFT_ALGORITHM
 		if(test_fma()){
 			if(test_avx2()){
 				// FMA + AVX2
@@ -73,6 +77,15 @@ public:
 		}else{
 			assert(!"Unsupported CPU");
 		}
+#else
+		if(test_fma()){
+			m_impl.reset(new waifu2x::DFTAVXImpl<true>());
+		}else if(test_avx()){
+			m_impl.reset(new waifu2x::DFTAVXImpl<false>());
+		}else{
+			assert(!"Unsupported CPU");
+		}
+#endif
 		const waifu2x::Model model(model_json);
 		m_num_steps = static_cast<int>(model.num_steps());
 		m_impl->prepare(model);

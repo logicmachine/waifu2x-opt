@@ -1,5 +1,6 @@
 #include <iostream>
 #include <algorithm>
+#include <chrono>
 #include <cassert>
 #include <immintrin.h>
 #include <omp.h>
@@ -277,6 +278,7 @@ void AVXImpl<ENABLE_FMA, ENABLE_AVX2>::process(
 	float *dst, const float *src, int io_width, int io_height, int io_pitch,
 	int x0, int y0, int block_width, int block_height, bool verbose)
 {
+	namespace chrono = std::chrono;
 	const int num_steps = static_cast<int>(m_model.num_steps());
 	const int width = block_width + 2 * num_steps;
 	const int height = block_height + 2 * num_steps;
@@ -297,14 +299,21 @@ void AVXImpl<ENABLE_FMA, ENABLE_AVX2>::process(
 	}
 
 	for(int i = 0; i < num_steps; ++i){
+		const auto begin_time = chrono::system_clock::now();
 		if(verbose){
-			std::cerr << "  Step " << i << "/" << num_steps << std::endl;
+			std::cerr << "  Step " << i << "/" << num_steps;
 		}
 		const int p = (i + 1) * 2;
 		auto out_planes = compute_step<ENABLE_FMA, ENABLE_AVX2>(
 			m_model, i, in_planes, width - p, height - p, pitch,
 			m_num_threads);
 		out_planes.swap(in_planes);
+		if(verbose){
+			const auto end_time = chrono::system_clock::now();
+			const auto duration =
+				chrono::duration_cast<chrono::milliseconds>(end_time - begin_time);
+			std::cerr << " " << duration.count() << " [ms]" << std::endl;
+		}
 	}
 	assert(in_planes.size() == 1);
 

@@ -16,6 +16,12 @@
 
 namespace waifu2x {
 
+#if defined(_MSC_VER)
+#	define ALIGNED(x) __declspec(align(x))
+#else
+#	define ALIGNED(x) __attribute__((aligned(x)))
+#endif
+
 inline void *aligned_malloc(std::size_t n){
 #if defined(_MSC_VER)
 	// Visual C++
